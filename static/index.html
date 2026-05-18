@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CIFAR-10 · Reconnaissance Animale</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:        #0b0f0e;
+      --surface:   #111815;
+      --border:    #1e2b26;
+      --accent:    #4ade80;
+      --accent2:   #86efac;
+      --muted:     #3a4f44;
+      --text:      #e8f0ec;
+      --text-dim:  #6b8c7a;
+      --danger:    #f87171;
+      --gold:      #fbbf24;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated background ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 20% 20%, rgba(74,222,128,.06) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 80% 80%, rgba(74,222,128,.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .grid-lines {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .04;
+      background-image:
+        linear-gradient(var(--accent) 1px, transparent 1px),
+        linear-gradient(90deg, var(--accent) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+
+    /* ── Layout ── */
+    .wrapper {
+      position: relative; z-index: 1;
+      max-width: 860px; margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 56px 0 48px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tag {
+      display: inline-block;
+      font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--accent); border: 1px solid var(--accent);
+      padding: 4px 12px; border-radius: 2px; margin-bottom: 20px;
+    }
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
+      font-weight: 700; line-height: 1.12;
+      letter-spacing: -.01em;
+    }
+    h1 em { font-style: italic; color: var(--accent); }
+    .subtitle {
+      margin-top: 14px;
+      font-size: 13px; color: var(--text-dim); line-height: 1.7;
+      max-width: 500px;
+    }
+
+    /* ── Upload zone ── */
+    .upload-section { margin-top: 48px; }
+
+    .drop-zone {
+      position: relative;
+      border: 1.5px dashed var(--muted);
+      border-radius: 8px;
+      min-height: 280px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      cursor: pointer;
+      transition: border-color .25s, background .25s;
+      background: rgba(255,255,255,.015);
+      overflow: hidden;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(74,222,128,.04);
+    }
+    .drop-zone input[type=file] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 48px; line-height: 1;
+      filter: grayscale(.4);
+      transition: transform .3s;
+    }
+    .drop-zone:hover .drop-icon { transform: scale(1.1) translateY(-4px); }
+
+    .drop-label {
+      font-size: 13px; color: var(--text-dim); text-align: center;
+    }
+    .drop-label strong { color: var(--text); font-weight: 500; }
+    .drop-hint { font-size: 11px; color: var(--muted); letter-spacing: .06em; }
+
+    /* Preview inside drop zone */
+    #preview-img {
+      display: none;
+      max-height: 220px; max-width: 90%;
+      border-radius: 4px;
+      object-fit: contain;
+      image-rendering: pixelated; /* CIFAR images are tiny */
+      box-shadow: 0 0 30px rgba(74,222,128,.15);
+    }
+
+    /* ── Button ── */
+    .btn {
+      margin-top: 24px;
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--accent);
+      color: #051208;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px; font-weight: 500; letter-spacing: .06em;
+      border: none; border-radius: 4px;
+      padding: 14px 32px; cursor: pointer;
+      transition: background .2s, transform .15s, box-shadow .2s;
+      box-shadow: 0 0 0 transparent;
+    }
+    .btn:hover {
+      background: var(--accent2);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(74,222,128,.25);
+    }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(5,18,8,.3);
+      border-top-color: #051208;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    .btn.loading .spinner { display: block; }
+    .btn.loading .btn-text { opacity: .7; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Config row ── */
+    .config-row {
+      margin-top: 20px;
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap;
+    }
+    .config-row label { font-size: 11px; color: var(--text-dim); letter-spacing: .06em; }
+    .api-input {
+      flex: 1; min-width: 200px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px;
+      padding: 8px 12px; border-radius: 4px; outline: none;
+      transition: border-color .2s;
+    }
+    .api-input:focus { border-color: var(--accent); }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: background .3s;
+    }
+    .status-dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .status-dot.offline { background: var(--danger); }
+
+    /* ── Result panel ── */
+    #result {
+      margin-top: 48px;
+      opacity: 0; transform: translateY(16px);
+      transition: opacity .4s, transform .4s;
+      pointer-events: none;
+    }
+    #result.visible {
+      opacity: 1; transform: none;
+      pointer-events: auto;
+    }
+
+    .result-header {
+      font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--text-dim); margin-bottom: 20px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .result-header::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .result-main {
+      display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap;
+    }
+
+    .result-image-box {
+      position: relative;
+      width: 160px; height: 160px; flex-shrink: 0;
+      border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+      background: var(--surface);
+    }
+    .result-image-box img {
+      width: 100%; height: 100%; object-fit: cover;
+      image-rendering: pixelated;
+    }
+    .result-image-box::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(74,222,128,.08) 0%, transparent 60%);
+    }
+
+    .result-info { flex: 1; min-width: 200px; }
+
+    .result-emoji { font-size: 52px; line-height: 1; margin-bottom: 8px; }
+
+    .result-class {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.2rem; font-weight: 700;
+      color: var(--accent); line-height: 1.1;
+      text-transform: capitalize;
+    }
+
+    .result-confidence {
+      margin-top: 8px;
+      font-size: 12px; color: var(--text-dim);
+    }
+    .confidence-bar {
+      margin-top: 6px;
+      height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .confidence-fill {
+      height: 100%; background: var(--accent); border-radius: 2px;
+      transition: width 1s cubic-bezier(.4,0,.2,1);
+      width: 0;
+    }
+
+    .demo-badge {
+      display: inline-block; margin-top: 10px;
+      font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--gold); border: 1px solid rgba(251,191,36,.3);
+      padding: 3px 10px; border-radius: 2px;
+    }
+
+    /* ── Top 5 ── */
+    .top5 { margin-top: 32px; }
+    .top5-title {
+      font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--text-dim); margin-bottom: 12px;
+    }
+    .top5-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .top5-item:last-child { border-bottom: none; }
+    .top5-rank {
+      font-size: 10px; color: var(--muted);
+      width: 16px; text-align: right; flex-shrink: 0;
+    }
+    .top5-emoji { font-size: 18px; flex-shrink: 0; }
+    .top5-name {
+      flex: 1; font-size: 12px; text-transform: capitalize;
+    }
+    .top5-name.first { color: var(--accent); font-weight: 500; }
+    .top5-bar-wrap {
+      width: 100px; height: 3px;
+      background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .top5-bar {
+      height: 100%; border-radius: 2px;
+      background: var(--muted);
+      transition: width 1.2s cubic-bezier(.4,0,.2,1);
+      width: 0;
+    }
+    .top5-item:first-child .top5-bar { background: var(--accent); }
+    .top5-pct {
+      font-size: 11px; color: var(--text-dim);
+      width: 40px; text-align: right;
+    }
+
+    /* ── Error ── */
+    .error-box {
+      margin-top: 24px;
+      background: rgba(248,113,113,.06);
+      border: 1px solid rgba(248,113,113,.2);
+      border-radius: 6px; padding: 16px 20px;
+      font-size: 13px; color: var(--danger);
+      display: none;
+    }
+    .error-box.show { display: block; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 80px;
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+      font-size: 11px; color: var(--muted);
+      display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 560px) {
+      .result-main { flex-direction: column; }
+      .result-image-box { width: 100%; height: 200px; }
+    }
+  </style>
+</head>
+<body>
+<div class="grid-lines"></div>
+
+<div class="wrapper">
+  <header>
+    <div class="tag">CIFAR-10 · Deep Learning</div>
+    <h1>Reconnaissance<br><em>Animale</em> par IA</h1>
+    <p class="subtitle">
+      Importez une image — le réseau de neurones identifie parmi les 10 classes CIFAR-10 :
+      avion, automobile, oiseau, chat, cerf, chien, grenouille, cheval, bateau, camion.
+    </p>
+  </header>
+
+  <!-- Upload -->
+  <div class="upload-section">
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept="image/*"/>
+      <img id="preview-img" alt="Preview"/>
+      <div class="drop-icon" id="drop-icon">🖼️</div>
+      <div class="drop-label" id="drop-label">
+        <strong>Glissez une image ici</strong><br>
+        ou cliquez pour parcourir
+      </div>
+      <div class="drop-hint">PNG · JPG · WEBP — max 10 MB</div>
+    </div>
+
+    <div class="config-row">
+      <label>API :</label>
+      <input class="api-input" id="api-url" type="text" value="http://localhost:8000" placeholder="http://localhost:8000"/>
+      <div class="status-dot" id="status-dot" title="Statut de l'API"></div>
+      <span style="font-size:11px;color:var(--text-dim)" id="status-text">Vérification…</span>
+    </div>
+
+    <button class="btn" id="classify-btn" disabled>
+      <div class="spinner"></div>
+      <span class="btn-text">Classifier l'image</span>
+    </button>
+
+    <div class="error-box" id="error-box"></div>
+  </div>
+
+  <!-- Result -->
+  <div id="result">
+    <div class="result-header">Résultat</div>
+    <div class="result-main">
+      <div class="result-image-box">
+        <img id="result-img" src="" alt=""/>
+      </div>
+      <div class="result-info">
+        <div class="result-emoji" id="result-emoji">🐾</div>
+        <div class="result-class" id="result-class">—</div>
+        <div class="result-confidence">
+          Confiance : <span id="conf-pct">—</span>
+          <div class="confidence-bar"><div class="confidence-fill" id="conf-bar"></div></div>
+        </div>
+        <div class="demo-badge" id="demo-badge" style="display:none">⚡ Mode démonstration</div>
+      </div>
+    </div>
+
+    <div class="top5">
+      <div class="top5-title">Top 5 probabilités</div>
+      <div id="top5-list"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span>CIFAR-10 Classifier · FastAPI + Keras</span>
+    <span>10 classes · 32×32 px</span>
+  </footer>
+</div>
+
+<script>
+  const fileInput   = document.getElementById('file-input');
+  const dropZone    = document.getElementById('drop-zone');
+  const previewImg  = document.getElementById('preview-img');
+  const dropIcon    = document.getElementById('drop-icon');
+  const dropLabel   = document.getElementById('drop-label');
+  const classifyBtn = document.getElementById('classify-btn');
+  const resultPanel = document.getElementById('result');
+  const errorBox    = document.getElementById('error-box');
+  const apiUrlInput = document.getElementById('api-url');
+  const statusDot   = document.getElementById('status-dot');
+  const statusText  = document.getElementById('status-text');
+
+  let selectedFile = null;
+
+  // ── API health check ──
+  async function checkHealth() {
+    const url = apiUrlInput.value.trim().replace(/\/$/, '');
+    try {
+      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const data = await res.json();
+        statusDot.className = 'status-dot online';
+        statusText.textContent = data.model_loaded ? 'API connectée · Modèle chargé' : 'API connectée · Mode démo';
+      } else {
+        throw new Error();
+      }
+    } catch {
+      statusDot.className = 'status-dot offline';
+      statusText.textContent = 'API non accessible';
+    }
+  }
+
+  checkHealth();
+  setInterval(checkHealth, 8000);
+  apiUrlInput.addEventListener('change', checkHealth);
+
+  // ── File selection ──
+  function handleFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    selectedFile = file;
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewImg.style.display = 'block';
+    dropIcon.style.display = 'none';
+    dropLabel.style.display = 'none';
+    classifyBtn.disabled = false;
+    hideError();
+    resultPanel.classList.remove('visible');
+  }
+
+  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  // ── Classify ──
+  classifyBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    classifyBtn.classList.add('loading');
+    classifyBtn.disabled = true;
+    hideError();
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    const apiUrl = apiUrlInput.value.trim().replace(/\/$/, '');
+
+    try {
+      const res = await fetch(`${apiUrl}/predict`, { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Erreur ${res.status}`);
+      }
+      const data = await res.json();
+      showResult(data);
+    } catch (err) {
+      showError(err.message || 'Erreur de connexion à l\'API.');
+    } finally {
+      classifyBtn.classList.remove('loading');
+      classifyBtn.disabled = false;
+    }
+  });
+
+  // ── Show result ──
+  function showResult(data) {
+    document.getElementById('result-img').src = previewImg.src;
+    document.getElementById('result-emoji').textContent = data.emoji || '🐾';
+    document.getElementById('result-class').textContent = data.predicted_class || '—';
+    document.getElementById('conf-pct').textContent = `${(data.confidence * 100).toFixed(1)}%`;
+    document.getElementById('demo-badge').style.display = data.demo_mode ? 'inline-block' : 'none';
+
+    // Animate confidence bar
+    const bar = document.getElementById('conf-bar');
+    bar.style.width = '0';
+    setTimeout(() => { bar.style.width = `${(data.confidence * 100).toFixed(1)}%`; }, 50);
+
+    // Top 5
+    const list = document.getElementById('top5-list');
+    list.innerHTML = '';
+    const maxConf = data.top5[0].confidence;
+    data.top5.forEach((item, i) => {
+      const div = document.createElement('div');
+      div.className = 'top5-item';
+      div.innerHTML = `
+        <span class="top5-rank">#${i + 1}</span>
+        <span class="top5-emoji">${item.emoji}</span>
+        <span class="top5-name ${i === 0 ? 'first' : ''}">${item.class}</span>
+        <div class="top5-bar-wrap"><div class="top5-bar" data-w="${(item.confidence / maxConf * 100).toFixed(1)}"></div></div>
+        <span class="top5-pct">${(item.confidence * 100).toFixed(1)}%</span>
+      `;
+      list.appendChild(div);
+    });
+
+    resultPanel.classList.add('visible');
+
+    // Animate bars
+    setTimeout(() => {
+      document.querySelectorAll('.top5-bar').forEach(b => {
+        b.style.width = b.dataset.w + '%';
+      });
+    }, 100);
+
+    resultPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function showError(msg) {
+    errorBox.textContent = `⚠ ${msg}`;
+    errorBox.classList.add('show');
+  }
+
+  function hideError() {
+    errorBox.classList.remove('show');
+  }
+</script>
+</body>
+</html>
